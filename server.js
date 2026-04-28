@@ -346,6 +346,27 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
   }
 });
 
+app.post("/webhook-wix-producto", async (req, res) => {
+  try {
+    console.log("📦 Webhook Wix recibido:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    res.json({
+      ok: true,
+      mensaje: "Webhook de Wix recibido correctamente",
+      recibido: req.body
+    });
+  } catch (error) {
+    console.error("Error en webhook Wix:", error);
+
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error procesando webhook de Wix",
+      error: error.message
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor Catalogo API escuchando en puerto ${PORT}`);
 });
