@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3000;
 const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION || "v22.0";
 const META_CATALOG_ID = process.env.META_CATALOG_ID;
 const META_CATALOG_TOKEN = process.env.META_CATALOG_TOKEN;
+const API_SECRET = process.env.API_SECRET;
 
 function validarConfig() {
   const faltantes = [];
@@ -20,6 +21,26 @@ function validarConfig() {
   if (!META_GRAPH_VERSION) faltantes.push("META_GRAPH_VERSION");
 
   return faltantes;
+}
+
+function validarApiSecret(req, res, next) {
+  if (!API_SECRET) {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "API_SECRET no está configurado en el servidor."
+    });
+  }
+
+  const recibido = req.headers["x-api-secret"];
+
+  if (!recibido || recibido !== API_SECRET) {
+    return res.status(401).json({
+      ok: false,
+      mensaje: "No autorizado. Falta o es incorrecto el x-api-secret."
+    });
+  }
+
+  next();
 }
 
 app.get("/", (req, res) => {
@@ -129,6 +150,92 @@ const payload = {
     res.status(500).json({
       ok: false,
       mensaje: "Error creando producto de prueba",
+      error: error.response?.data || error.message
+    });
+  }
+});
+
+app.post("/producto", validarApiSecret, async (req, res) => {
+  try {
+    if (!META_CATALOG_TOKEN || META_CATALOG_TOKEN === "pendiente") {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Primero configura META_CATALOG_TOKEN con el token real."
+      });
+    }
+
+    const producto = req.body;
+
+    const camposObligatorios = [
+      "id",
+      "title",
+      "description",
+      "availability",
+      "condition",
+      "price",
+      "link",
+      "image_link",
+      "brand"
+    ];
+
+    const faltantes = camposObligatorios.filter((campo) => !producto[campo]);
+
+    if (faltantes.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Faltan campos obligatorios.",
+        faltantes
+      });
+    }
+
+    const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_CATALOG_ID}/items_batch`;
+
+    const payload = {
+      item_type: "PRODUCT_ITEM",
+      requests: [
+        {
+          method: "UPDATE",
+          retailer_id: producto.id,
+          data: {
+            id: producto.id,
+            title: producto.title,
+            description: producto.description,
+            availability: producto.availability,
+            condition: producto.condition,
+            price: producto.price,
+            link: producto.link,
+            image_link: producto.image_link,
+            brand: producto.brand,
+            item_group_id: producto.item_group_id || producto.id,
+            google_product_category: producto.google_product_category || undefined,
+            sale_price: producto.sale_price || undefined,
+            additional_image_link: producto.additional_image_link || undefined,
+            custom_label_0: producto.custom_label_0 || undefined,
+            custom_label_1: producto.custom_label_1 || undefined,
+            custom_label_2: producto.custom_label_2 || undefined,
+            custom_label_3: producto.custom_label_3 || undefined,
+            custom_label_4: producto.custom_label_4 || undefined
+          }
+        }
+      ]
+    };
+
+    const response = await axios.post(url, payload, {
+      params: {
+        access_token: META_CATALOG_TOKEN
+      }
+    });
+
+    res.json({
+      ok: true,
+      mensaje: "Producto enviado a Meta correctamente",
+      producto_enviado: producto,
+      respuesta_meta: response.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error enviando producto a Meta",
       error: error.response?.data || error.message
     });
   }
