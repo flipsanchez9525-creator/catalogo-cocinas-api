@@ -88,15 +88,15 @@ app.post("/crear-producto-prueba", async (req, res) => {
     }
 
     const producto = {
-      id: "cocina-4q-acero-negro-59x51-prueba",
-      title: "Cocina de empotrar 4 quemadores a gas - Prueba API",
+      id: "eaa73a16-f3c2-49c8-bfde-5580d1e7f104",
+      title: "Cocina de empotrar 4Q a gas ALL BLACK SERIES",
       description:
-        "Cocina de empotrar a gas con base de acero inoxidable negro, perillas metálicas, parrillas de hierro fundido y chispero eléctrico 110V.",
+        "Cocina de empotrar a gas con medidas de 59cm x 51cm, base de vidrio templado de 8mm, perillas metálicas, parrillas de hierro fundido, 4 quemadores a gas, chispero eléctrico 110V y garantía de 1 año.",
       availability: "in stock",
       condition: "new",
-      price: "135.00 USD",
-      link: "https://www.cocinasdeempotrar.com/",
-      image_link: "https://www.cocinasdeempotrar.com/",
+      price: "125.00 USD",
+      link: "https://www.cocinasdeempotrar.com/product-page/cocina-de-empotrar-4q-a-gas-vidrio-templado-all-black-series",
+      image_link: "https://static.wixstatic.com/media/a82c86_6dc2762a629842a4908bfb4ec0a76e46~mv2.jpeg/v1/fill/w_1182,h_666,al_c,q_85/a82c86_6dc2762a629842a4908bfb4ec0a76e46~mv2.jpeg",
       brand: "Cocinas de empotrar SV"
     };
 
