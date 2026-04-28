@@ -102,15 +102,16 @@ app.post("/crear-producto-prueba", async (req, res) => {
 
     const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_CATALOG_ID}/items_batch`;
 
-    const payload = {
-      requests: [
-        {
-          method: "CREATE",
-          retailer_id: producto.id,
-          data: producto
-        }
-      ]
-    };
+const payload = {
+  item_type: "PRODUCT_ITEM",
+  requests: [
+    {
+      method: "CREATE",
+      retailer_id: producto.id,
+      data: producto
+    }
+  ]
+};
 
     const response = await axios.post(url, payload, {
       params: {
