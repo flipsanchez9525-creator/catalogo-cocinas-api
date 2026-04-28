@@ -241,6 +241,111 @@ app.post("/producto", validarApiSecret, async (req, res) => {
   }
 });
 
+app.post("/productos-batch", validarApiSecret, async (req, res) => {
+  try {
+    if (!META_CATALOG_TOKEN || META_CATALOG_TOKEN === "pendiente") {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Primero configura META_CATALOG_TOKEN con el token real."
+      });
+    }
+
+    const productos = req.body.productos;
+
+    if (!Array.isArray(productos) || productos.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debes enviar un arreglo de productos en el campo productos."
+      });
+    }
+
+    const camposObligatorios = [
+      "id",
+      "title",
+      "description",
+      "availability",
+      "condition",
+      "price",
+      "link",
+      "image_link",
+      "brand"
+    ];
+
+    const errores = [];
+
+    productos.forEach((producto, index) => {
+      const faltantes = camposObligatorios.filter((campo) => !producto[campo]);
+
+      if (faltantes.length > 0) {
+        errores.push({
+          index,
+          id: producto.id || null,
+          faltantes
+        });
+      }
+    });
+
+    if (errores.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Algunos productos tienen campos faltantes.",
+        errores
+      });
+    }
+
+    const requests = productos.map((producto) => ({
+      method: "UPDATE",
+      retailer_id: producto.id,
+      data: {
+        id: producto.id,
+        title: producto.title,
+        description: producto.description,
+        availability: producto.availability,
+        condition: producto.condition,
+        price: producto.price,
+        link: producto.link,
+        image_link: producto.image_link,
+        brand: producto.brand,
+        item_group_id: producto.item_group_id || producto.id,
+        google_product_category: producto.google_product_category || undefined,
+        sale_price: producto.sale_price || undefined,
+        additional_image_link: producto.additional_image_link || undefined,
+        custom_label_0: producto.custom_label_0 || undefined,
+        custom_label_1: producto.custom_label_1 || undefined,
+        custom_label_2: producto.custom_label_2 || undefined,
+        custom_label_3: producto.custom_label_3 || undefined,
+        custom_label_4: producto.custom_label_4 || undefined
+      }
+    }));
+
+    const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_CATALOG_ID}/items_batch`;
+
+    const payload = {
+      item_type: "PRODUCT_ITEM",
+      requests
+    };
+
+    const response = await axios.post(url, payload, {
+      params: {
+        access_token: META_CATALOG_TOKEN
+      }
+    });
+
+    res.json({
+      ok: true,
+      mensaje: "Lote de productos enviado a Meta correctamente",
+      total_enviados: productos.length,
+      respuesta_meta: response.data
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error enviando lote de productos a Meta",
+      error: error.response?.data || error.message
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor Catalogo API escuchando en puerto ${PORT}`);
 });
