@@ -242,6 +242,8 @@ app.post("/producto", validarApiSecret, async (req, res) => {
 });
 
 app.post("/productos-batch", validarApiSecret, async (req, res) => {
+  let productos = [];
+
   try {
     if (!META_CATALOG_TOKEN || META_CATALOG_TOKEN === "pendiente") {
       return res.status(400).json({
@@ -250,7 +252,13 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
       });
     }
 
-    const productos = req.body.productos;
+    productos = req.body.productos;
+
+    console.log("🔥 /productos-batch recibido:", {
+      total: Array.isArray(productos) ? productos.length : null,
+      ids: Array.isArray(productos) ? productos.map((p) => p.id) : null,
+      fecha: new Date().toISOString()
+    });
 
     if (!Array.isArray(productos) || productos.length === 0) {
       return res.status(400).json({
@@ -280,12 +288,15 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
         errores.push({
           index,
           id: producto.id || null,
+          title: producto.title || null,
           faltantes
         });
       }
     });
 
     if (errores.length > 0) {
+      console.error("❌ Productos con campos faltantes:", errores);
+
       return res.status(400).json({
         ok: false,
         mensaje: "Algunos productos tienen campos faltantes.",
@@ -293,10 +304,8 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
       });
     }
 
-    const requests = productos.map((producto) => ({
-      method: "UPDATE",
-      retailer_id: producto.id,
-      data: {
+    const requests = productos.map((producto) => {
+      const data = {
         id: producto.id,
         title: producto.title,
         description: producto.description,
@@ -309,14 +318,26 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
         item_group_id: producto.item_group_id || producto.id,
         google_product_category: producto.google_product_category || undefined,
         sale_price: producto.sale_price || undefined,
-        additional_image_link: producto.additional_image_link || undefined,
         custom_label_0: producto.custom_label_0 || undefined,
         custom_label_1: producto.custom_label_1 || undefined,
         custom_label_2: producto.custom_label_2 || undefined,
         custom_label_3: producto.custom_label_3 || undefined,
         custom_label_4: producto.custom_label_4 || undefined
+      };
+
+      if (
+        Array.isArray(producto.additional_image_link) &&
+        producto.additional_image_link.length > 0
+      ) {
+        data.additional_image_link = producto.additional_image_link;
       }
-    }));
+
+      return {
+        method: "UPDATE",
+        retailer_id: producto.id,
+        data
+      };
+    });
 
     const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_CATALOG_ID}/items_batch`;
 
@@ -325,23 +346,69 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
       requests
     };
 
+    console.log("📤 Enviando lote a Meta:", {
+      total: productos.length,
+      ids: productos.map((p) => p.id),
+      imagenesAdicionales: productos.map((p) => ({
+        id: p.id,
+        total: Array.isArray(p.additional_image_link)
+          ? p.additional_image_link.length
+          : 0
+      }))
+    });
+
     const response = await axios.post(url, payload, {
       params: {
         access_token: META_CATALOG_TOKEN
       }
     });
 
+    console.log("✅ Respuesta Meta /productos-batch:", {
+      status: response.status,
+      handles: response.data?.handles || null,
+      data: response.data
+    });
+
     res.json({
       ok: true,
       mensaje: "Lote de productos enviado a Meta correctamente",
       total_enviados: productos.length,
+      ids: productos.map((p) => p.id),
       respuesta_meta: response.data
     });
   } catch (error) {
+    console.error("❌ ERROR EN /productos-batch:", {
+      message: error.message,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data,
+      productos: Array.isArray(productos)
+        ? productos.map((p) => ({
+            id: p.id,
+            title: p.title,
+            image_link: p.image_link,
+            adicionales: Array.isArray(p.additional_image_link)
+              ? p.additional_image_link.length
+              : 0
+          }))
+        : null,
+      stack: error.stack
+    });
+
     res.status(500).json({
       ok: false,
       mensaje: "Error enviando lote de productos a Meta",
-      error: error.response?.data || error.message
+      error: error.message,
+      meta_status: error.response?.status || null,
+      meta_error: error.response?.data || null,
+      productos: Array.isArray(productos)
+        ? productos.map((p) => ({
+            id: p.id,
+            title: p.title,
+            adicionales: Array.isArray(p.additional_image_link)
+              ? p.additional_image_link.length
+              : 0
+          }))
+        : null
     });
   }
 });
