@@ -242,6 +242,7 @@ app.post("/producto", validarApiSecret, async (req, res) => {
 });
 
 app.post("/productos-batch", validarApiSecret, async (req, res) => {
+  
   let productos = [];
 
   try {
@@ -409,6 +410,196 @@ app.post("/productos-batch", validarApiSecret, async (req, res) => {
               : 0
           }))
         : null
+    });
+  }
+});
+
+async function dormir(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function enviarLoteAMeta(productos) {
+  const requests = productos.map((producto) => {
+    const data = {
+      id: producto.id,
+      title: producto.title,
+      description: producto.description,
+      availability: producto.availability,
+      condition: producto.condition,
+      price: producto.price,
+      link: producto.link,
+      image_link: producto.image_link,
+      brand: producto.brand,
+      item_group_id: producto.item_group_id || producto.id,
+      google_product_category: producto.google_product_category || undefined,
+      sale_price: producto.sale_price || undefined,
+      custom_label_0: producto.custom_label_0 || undefined,
+      custom_label_1: producto.custom_label_1 || undefined,
+      custom_label_2: producto.custom_label_2 || undefined,
+      custom_label_3: producto.custom_label_3 || undefined,
+      custom_label_4: producto.custom_label_4 || undefined
+    };
+
+    if (
+      Array.isArray(producto.additional_image_link) &&
+      producto.additional_image_link.length > 0
+    ) {
+      data.additional_image_link = producto.additional_image_link;
+    }
+
+    return {
+      method: "UPDATE",
+      retailer_id: producto.id,
+      data
+    };
+  });
+
+  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_CATALOG_ID}/items_batch`;
+
+  const payload = {
+    item_type: "PRODUCT_ITEM",
+    requests
+  };
+
+  const response = await axios.post(url, payload, {
+    params: {
+      access_token: META_CATALOG_TOKEN
+    }
+  });
+
+  return response.data;
+}
+
+async function procesarProductosAsync(productos, jobId) {
+  try {
+    console.log("🚀 SINCRONIZACIÓN ASYNC INICIADA:", {
+      jobId,
+      totalProductos: productos.length,
+      fecha: new Date().toISOString()
+    });
+
+    const tamanoLote = 10;
+    const pausaEntreLotesMs = 8000;
+    const lotes = [];
+
+    for (let i = 0; i < productos.length; i += tamanoLote) {
+      lotes.push(productos.slice(i, i + tamanoLote));
+    }
+
+    console.log("📦 Lotes preparados:", {
+      jobId,
+      totalLotes: lotes.length,
+      tamanoLote
+    });
+
+    for (let i = 0; i < lotes.length; i++) {
+      const lote = lotes[i];
+
+      console.log(`📤 ASYNC enviando lote ${i + 1} de ${lotes.length}:`, {
+        jobId,
+        total: lote.length,
+        ids: lote.map((p) => p.id)
+      });
+
+      try {
+        const respuestaMeta = await enviarLoteAMeta(lote);
+
+        console.log(`✅ ASYNC lote ${i + 1} enviado correctamente:`, {
+          jobId,
+          lote: i + 1,
+          totalLotes: lotes.length,
+          respuestaMeta
+        });
+      } catch (error) {
+        console.error(`❌ ASYNC error en lote ${i + 1}:`, {
+          jobId,
+          lote: i + 1,
+          message: error.message,
+          responseStatus: error.response?.status,
+          responseData: error.response?.data,
+          productos: lote.map((p) => ({
+            id: p.id,
+            title: p.title,
+            adicionales: Array.isArray(p.additional_image_link)
+              ? p.additional_image_link.length
+              : 0
+          }))
+        });
+      }
+
+      if (i < lotes.length - 1) {
+        console.log(`⏳ ASYNC esperando ${pausaEntreLotesMs / 1000} segundos antes del siguiente lote...`, {
+          jobId
+        });
+
+        await dormir(pausaEntreLotesMs);
+      }
+    }
+
+    console.log("🏁 SINCRONIZACIÓN ASYNC FINALIZADA:", {
+      jobId,
+      totalProductos: productos.length,
+      totalLotes: lotes.length,
+      fecha: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("❌ ERROR GENERAL EN SINCRONIZACIÓN ASYNC:", {
+      jobId,
+      message: error.message,
+      stack: error.stack
+    });
+  }
+}
+
+app.post("/sincronizar-productos-async", validarApiSecret, async (req, res) => {
+  try {
+    if (!META_CATALOG_TOKEN || META_CATALOG_TOKEN === "pendiente") {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Primero configura META_CATALOG_TOKEN con el token real."
+      });
+    }
+
+    const productos = req.body.productos;
+
+    if (!Array.isArray(productos) || productos.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debes enviar un arreglo de productos en el campo productos."
+      });
+    }
+
+    const jobId = `sync_${Date.now()}`;
+
+    console.log("📥 Solicitud async recibida:", {
+      jobId,
+      totalProductos: productos.length,
+      ids: productos.map((p) => p.id),
+      fecha: new Date().toISOString()
+    });
+
+    res.json({
+      ok: true,
+      mensaje: "Sincronización recibida. Railway procesará los lotes en segundo plano.",
+      jobId,
+      totalProductos: productos.length
+    });
+
+    setImmediate(() => {
+      procesarProductosAsync(productos, jobId);
+    });
+  } catch (error) {
+    console.error("❌ ERROR EN /sincronizar-productos-async:", {
+      message: error.message,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error iniciando sincronización async",
+      error: error.message
     });
   }
 });
